@@ -1,5 +1,5 @@
 from aiogram import F, Router
-from aiogram.filters import CommandStart
+from aiogram.filters import CommandStart, Command
 from aiogram.fsm.context import FSMContext
 from aiogram.types import Message
 import app.keyboards as kb
@@ -15,13 +15,13 @@ router = Router()
 
 
 class Reg(StatesGroup):
-    name = State()
-    number = State()
+    id = State()
 
 
 @router.message(CommandStart())
 async def cmd_start(message: Message):
-    await message.reply("Выберите один из магазинов чтобы узнать остаток товаров.", reply_markup=kb.main)
+    await message.reply("Вас приветстувет бот по поиску товаров на меркетплейсе "
+                        "Uzum перед началом работы ознакомьтесь с руководством.", reply_markup=kb.main)
 
 
 @router.message(F.text == 'Обновить базу TCL')
@@ -49,3 +49,54 @@ async def catalog(message: Message):
     await message.bot.send_document(chat_id=message.chat.id, document=excel)
 
 
+@router.message(F.text.in_(['Поиск по id TCL', 'Поиск по id Roison']))
+async def input_id(message: Message, state: FSMContext):
+    if message.text == 'Поиск по id TCL':
+        await state.update_data(search_type='tcl')
+    elif message.text == 'Поиск по id Roison':
+        await state.update_data(search_type='roison')
+
+    await state.set_state(Reg.id)
+    await message.answer('Введите id товара:')
+
+
+@router.message(Reg.id)
+async def search_id(message: Message, state: FSMContext):
+    await state.update_data(id=message.text)
+    data = await state.get_data()
+
+    try:
+        current_date = pd.Timestamp.now().strftime('%Y-%m-%d')
+        search_type = data.get('search_type', 'TCL')  # Default to 'TCL' if not set
+        file_name = f'C:/Users/Lazik/Desktop/SKU_{search_type}_{current_date}.xlsx'
+
+        excel_data = pd.read_excel(file_name)
+
+        product_info = excel_data[excel_data['ID Продукта'] == int(data['id'])]
+
+        if not product_info.empty:
+            response_text = (
+                f"ID Продукта: {product_info['ID Продукта'].values[0]}\n"
+                f"Название продукта: {product_info['Название продукта'].values[0]}\n"
+                f"Остаток Продукта: {product_info['Остаток Продукта'].values[0]}"
+            )
+        else:
+            response_text = "Продукт с таким ID не найден."
+
+    except FileNotFoundError:
+        response_text = "Данные не найдены, попробуйте обновить базу."
+
+    except ValueError:
+        response_text = "ID должен быть числом. Попробуйте ещё раз."
+
+    await message.answer(response_text)
+    await state.clear()
+
+
+@router.message(F.text == "Руководство")
+async def get_info(message: Message):
+    response_text = ("Этот бот предназначен для отображения остатков товаров на маркетплейсе Uzum по магазинам: "
+                     "<b>TCL Ssmart.Online</b> и <b>Roison.Uz</b> также в боте присутствует функция поиска товара по "
+                     "его <b>id</b>. Перед началом работы чтобы получить точные данные рекомендуется обновить базу "
+                     "(каждый день) так как данные динамичны и значение остатка товаров изменяются по мере их продажи.")
+    await message.answer(f"{response_text}", parse_mode="HTML")
