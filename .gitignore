@@ -1,0 +1,9 @@
+.env
+.env.*
+!.env.example
+*.xlsx
+__pycache__/
+.idea/
+*.sqlite3
+*.db
+headers.py
